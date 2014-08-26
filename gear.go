@@ -34,6 +34,8 @@ func serve() {
 	} else {
 		f := os.NewFile(3, "")
 		listener, err = net.FileListener(f)
+		parent := syscall.Getppid()
+		syscall.Kill(parent, syscall.SIGTERM)
 	}
 	server.Serve(listener)
 }
