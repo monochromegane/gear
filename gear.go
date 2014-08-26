@@ -2,15 +2,18 @@ package gear
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 )
 
 func Start() {
 	go serve()
+	createPid()
 	waitSignal()
 }
 
@@ -24,6 +27,10 @@ func serve() {
 		return
 	}
 	server.Serve(l)
+}
+
+func createPid() {
+	ioutil.WriteFile("gear.pid", []byte(strconv.Itoa(os.Getpid())), 0644)
 }
 
 func waitSignal() {
