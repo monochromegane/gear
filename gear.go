@@ -12,7 +12,7 @@ import (
 	"syscall"
 )
 
-var listner net.TCPListener
+var listener net.Listener
 
 func Start() {
 	go serve()
@@ -24,13 +24,18 @@ func serve() {
 	http.HandleFunc("/", dummyHandler)
 
 	server := &http.Server{Addr: "0.0.0.0:8888"}
-	addr, err := net.ResolveTCPAddr("tcp", server.Addr)
-	listner, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		fmt.Println(err)
-		return
+	var err error
+	if os.Getenv("gear") == "" {
+		listener, err = net.Listen("tcp", server.Addr)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	} else {
+		f := os.NewFile(3, "")
+		listener, err = net.FileListener(f)
 	}
-	server.Serve(listner)
+	server.Serve(listener)
 }
 
 func createPid() {
@@ -56,16 +61,13 @@ func renamePid() {
 }
 
 func fork() {
-	l, err := listner.File()
-	if err != nil {
-		fmt.Printf("%s\n", err)
-		return
-	}
+	tl := listener.(*net.TCPListener)
+	fl, _ := tl.File()
 	cmd := exec.Command(os.Args[0])
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = []string{"gear=child"}
-	cmd.ExtraFiles = []*os.File{l}
+	cmd.ExtraFiles = []*os.File{fl}
 	cmd.Start()
 }
 
