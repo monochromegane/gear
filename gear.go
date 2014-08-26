@@ -7,7 +7,10 @@ import (
 )
 
 func Start() {
+	go serve()
+}
 
+func serve() {
 	http.HandleFunc("/", dummyHandler)
 
 	server := &http.Server{Addr: "0.0.0.0:8888"}
