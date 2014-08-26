@@ -12,6 +12,8 @@ import (
 	"syscall"
 )
 
+var listner net.TCPListener
+
 func Start() {
 	go serve()
 	createPid()
@@ -22,12 +24,13 @@ func serve() {
 	http.HandleFunc("/", dummyHandler)
 
 	server := &http.Server{Addr: "0.0.0.0:8888"}
-	l, err := net.Listen("tcp", server.Addr)
+	addr, err := net.ResolveTCPAddr("tcp", server.Addr)
+	listner, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	server.Serve(l)
+	server.Serve(listner)
 }
 
 func createPid() {
@@ -53,10 +56,16 @@ func renamePid() {
 }
 
 func fork() {
+	l, err := listner.File()
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return
+	}
 	cmd := exec.Command(os.Args[0])
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = []string{"gear=child"}
+	cmd.ExtraFiles = []*os.File{l}
 	cmd.Start()
 }
 
