@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -44,10 +45,19 @@ func waitSignal() {
 
 func restart() {
 	renamePid()
+	fork()
 }
 
 func renamePid() {
 	os.Rename("gear.pid", "gear.pid.old")
+}
+
+func fork() {
+	cmd := exec.Command(os.Args[0])
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = []string{"gear=child"}
+	cmd.Start()
 }
 
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
