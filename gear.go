@@ -38,7 +38,16 @@ func waitSignal() {
 	signal.Notify(ch, syscall.SIGUSR2)
 	for sig := range ch {
 		fmt.Printf("Got a signal %v", sig)
+		restart()
 	}
+}
+
+func restart() {
+	renamePid()
+}
+
+func renamePid() {
+	os.Rename("gear.pid", "gear.pid.old")
 }
 
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
