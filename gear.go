@@ -55,6 +55,7 @@ func serve() {
 	}
 	server.Serve(listener)
 	wg.Wait()
+	removeOldPid()
 }
 
 func createPid() {
@@ -63,15 +64,14 @@ func createPid() {
 
 func waitSignal() {
 	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGUSR2)
-	for sig := range ch {
-		fmt.Printf("Got a signal %v", sig)
-		switch sig {
-		case syscall.SIGTERM:
-			stop()
-		case syscall.SIGUSR2:
-			restart()
-		}
+	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
+	sig := <-ch
+	fmt.Printf("Got a signal %v", sig)
+	switch sig {
+	case syscall.SIGTERM:
+		stop()
+	case syscall.SIGUSR2:
+		restart()
 	}
 }
 
@@ -99,6 +99,10 @@ func stop() {
 	listener.Close()
 }
 
+func removeOldPid() {
+	os.Remove("gear.pid.old")
+}
+
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello Gear!")
+	fmt.Fprintf(w, "Hello Gear from %d", os.Getpid())
 }
