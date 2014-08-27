@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 )
 
@@ -23,8 +24,23 @@ func Start() {
 func serve() {
 	http.HandleFunc("/", dummyHandler)
 
-	server := &http.Server{Addr: "0.0.0.0:8888"}
 	var err error
+	var wg sync.WaitGroup
+	conns := make(map[net.Conn]struct{})
+	server := &http.Server{Addr: "0.0.0.0:8888"}
+	server.ConnState = func(conn net.Conn, state http.ConnState) {
+		fmt.Printf("State: %d\n", state)
+		switch state {
+		case http.StateActive:
+			conns[conn] = struct{}{}
+			wg.Add(1)
+		case http.StateIdle, http.StateClosed:
+			if _, exists := conns[conn]; exists {
+				delete(conns, conn)
+				wg.Done()
+			}
+		}
+	}
 	if os.Getenv("gear") == "" {
 		listener, err = net.Listen("tcp", server.Addr)
 		if err != nil {
@@ -38,6 +54,7 @@ func serve() {
 		syscall.Kill(parent, syscall.SIGTERM)
 	}
 	server.Serve(listener)
+	wg.Wait()
 }
 
 func createPid() {
@@ -49,7 +66,12 @@ func waitSignal() {
 	signal.Notify(ch, syscall.SIGUSR2)
 	for sig := range ch {
 		fmt.Printf("Got a signal %v", sig)
-		restart()
+		switch sig {
+		case syscall.SIGTERM:
+			stop()
+		case syscall.SIGUSR2:
+			restart()
+		}
 	}
 }
 
@@ -71,6 +93,10 @@ func fork() {
 	cmd.Env = []string{"gear=child"}
 	cmd.ExtraFiles = []*os.File{fl}
 	cmd.Start()
+}
+
+func stop() {
+	listener.Close()
 }
 
 func dummyHandler(w http.ResponseWriter, r *http.Request) {
