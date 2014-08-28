@@ -66,7 +66,7 @@ func waitSignal() {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
 	sig := <-ch
-	fmt.Printf("Got a signal %v", sig)
+	fmt.Printf("Got a signal %v\n", sig)
 	switch sig {
 	case syscall.SIGTERM:
 		stop()
@@ -92,7 +92,10 @@ func fork() {
 	cmd.Stderr = os.Stderr
 	cmd.Env = []string{"gear=child"}
 	cmd.ExtraFiles = []*os.File{fl}
-	cmd.Start()
+	err := cmd.Start()
+	if err != nil {
+		fmt.Printf("start err: %s\n", err)
+	}
 }
 
 func stop() {
