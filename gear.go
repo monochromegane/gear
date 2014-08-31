@@ -19,7 +19,13 @@ type GearServer struct {
 	listener net.Listener
 }
 
-func NewServer(addr string, handler http.Handler) *GearServer {
+func ListenAndServe(addr string, handler http.Handler) error {
+	server := newServer(addr, handler)
+	err := server.ListenAndServe()
+	return err
+}
+
+func newServer(addr string, handler http.Handler) *GearServer {
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
