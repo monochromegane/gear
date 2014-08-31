@@ -2,13 +2,11 @@ package gear
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 )
@@ -131,16 +129,4 @@ func isParentProcess() bool {
 
 func isChildProcess() bool {
 	return !isParentProcess()
-}
-
-func createPid() {
-	ioutil.WriteFile("gear.pid", []byte(strconv.Itoa(os.Getpid())), 0644)
-}
-
-func renamePid() {
-	os.Rename("gear.pid", "gear.pid.old")
-}
-
-func removeOldPid() {
-	os.Remove("gear.pid.old")
 }
