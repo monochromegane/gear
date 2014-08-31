@@ -13,79 +13,100 @@ import (
 	"syscall"
 )
 
-var listener net.Listener
-
-func Start() {
-	go serve()
-	createPid()
-	waitSignal()
+type GearServer struct {
+	wg       sync.WaitGroup
+	server   *http.Server
+	listener net.Listener
 }
 
-func serve() {
-	http.HandleFunc("/", dummyHandler)
+func NewServer(addr string, handler http.Handler) *GearServer {
+	server := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+	gear := &GearServer{
+		server: server,
+	}
+	return gear
+}
 
+func (g *GearServer) ListenAndServe() error {
+	listener, err := g.Listener()
+	if err != nil {
+		return err
+	}
+	go g.Serve(listener)
+	createPid()
+
+	g.Wait()
+	return nil
+}
+
+func (g *GearServer) Listener() (net.Listener, error) {
+	if g.listener != nil {
+		return g.listener, nil
+	}
 	var err error
-	var wg sync.WaitGroup
+	var l net.Listener
+	if isParentProcess() {
+		l, err = net.Listen("tcp", g.server.Addr)
+	} else {
+		f := os.NewFile(3, "")
+		l, err = net.FileListener(f)
+	}
+	g.listener = l
+	return l, err
+}
+
+func (g *GearServer) Serve(l net.Listener) error {
 	conns := make(map[net.Conn]struct{})
-	server := &http.Server{Addr: "0.0.0.0:8888"}
-	server.ConnState = func(conn net.Conn, state http.ConnState) {
+	g.server.ConnState = func(conn net.Conn, state http.ConnState) {
 		fmt.Printf("State: %d\n", state)
 		switch state {
 		case http.StateActive:
 			conns[conn] = struct{}{}
-			wg.Add(1)
+			g.wg.Add(1)
 		case http.StateIdle, http.StateClosed:
 			if _, exists := conns[conn]; exists {
 				delete(conns, conn)
-				wg.Done()
+				g.wg.Done()
 			}
 		}
 	}
-	if os.Getenv("gear") == "" {
-		listener, err = net.Listen("tcp", server.Addr)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	} else {
-		f := os.NewFile(3, "")
-		listener, err = net.FileListener(f)
+
+	if isChildProcess() {
 		parent := syscall.Getppid()
 		syscall.Kill(parent, syscall.SIGTERM)
 	}
-	server.Serve(listener)
-	wg.Wait()
+	err := g.server.Serve(l)
+	if err != nil {
+		return err
+	}
+	g.wg.Wait()
 	removeOldPid()
+	return nil
 }
 
-func createPid() {
-	ioutil.WriteFile("gear.pid", []byte(strconv.Itoa(os.Getpid())), 0644)
-}
-
-func waitSignal() {
+func (g *GearServer) Wait() {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
 	sig := <-ch
 	fmt.Printf("Got a signal %v\n", sig)
 	switch sig {
 	case syscall.SIGTERM:
-		stop()
+		g.listener.Close()
 	case syscall.SIGUSR2:
-		restart()
+		g.restart()
 	}
 }
 
-func restart() {
+func (g GearServer) restart() {
 	renamePid()
-	fork()
+	g.fork()
 }
 
-func renamePid() {
-	os.Rename("gear.pid", "gear.pid.old")
-}
-
-func fork() {
-	tl := listener.(*net.TCPListener)
+func (g GearServer) fork() {
+	tl := g.listener.(*net.TCPListener)
 	fl, _ := tl.File()
 	cmd := exec.Command(os.Args[0])
 	cmd.Stdout = os.Stdout
@@ -98,14 +119,22 @@ func fork() {
 	}
 }
 
-func stop() {
-	listener.Close()
+func isParentProcess() bool {
+	return os.Getenv("gear") == ""
+}
+
+func isChildProcess() bool {
+	return !isParentProcess()
+}
+
+func createPid() {
+	ioutil.WriteFile("gear.pid", []byte(strconv.Itoa(os.Getpid())), 0644)
+}
+
+func renamePid() {
+	os.Rename("gear.pid", "gear.pid.old")
 }
 
 func removeOldPid() {
 	os.Remove("gear.pid.old")
-}
-
-func dummyHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello Gear from %d", os.Getpid())
 }
