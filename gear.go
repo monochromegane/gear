@@ -116,18 +116,13 @@ func (g *GearServer) WaitSignal(l net.Listener) {
 }
 
 func (g *GearServer) Serve(l net.Listener) error {
-	conns := make(map[net.Conn]struct{})
 	g.server.ConnState = func(conn net.Conn, state http.ConnState) {
 		fmt.Printf("State: %d\n", state)
 		switch state {
-		case http.StateActive:
-			conns[conn] = struct{}{}
+		case http.StateNew:
 			g.wg.Add(1)
-		case http.StateIdle, http.StateClosed:
-			if _, exists := conns[conn]; exists {
-				delete(conns, conn)
-				g.wg.Done()
-			}
+		case http.StateHijacked, http.StateClosed:
+			g.wg.Done()
 		}
 	}
 
