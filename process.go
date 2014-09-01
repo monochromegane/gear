@@ -24,10 +24,10 @@ func (p process) isForked() bool {
 }
 
 func (p process) stopParent() {
-	fmt.Printf("stopParent > %d\n", p.ppid)
 	if p.isFirst() {
 		return
 	}
+	fmt.Printf("stopParent > %d\n", p.ppid)
 	syscall.Kill(p.ppid, syscall.SIGTERM)
 }
 

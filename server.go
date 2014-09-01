@@ -47,6 +47,7 @@ func (s *Server) WaitSignal(l net.Listener) {
 		fmt.Printf("Got a signal %v on %d\n", sig, s.process.pid)
 		switch sig {
 		case syscall.SIGTERM:
+			s.server.SetKeepAlivesEnabled(false)
 			signal.Stop(ch)
 			l.Close()
 		case syscall.SIGUSR2:
@@ -69,11 +70,17 @@ func (s *Server) Serve(l net.Listener) error {
 	s.process.stopParent()
 
 	err := s.server.Serve(l)
-	if err != nil {
-		return err
-	}
+
 	fmt.Printf("waiting graceful shutdown on %d\n", s.process.pid)
 	s.wg.Wait()
 	removeOldPid()
-	return nil
+
+	if err != nil {
+		netOpError, ok := err.(*net.OpError)
+		if ok && netOpError.Err.Error() == "use of closed network connection" {
+			return nil
+		}
+	}
+	fmt.Printf("err of graceful shutdown on %d -> %v\n", s.process.pid, err)
+	return err
 }
