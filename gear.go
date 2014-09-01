@@ -12,10 +12,9 @@ import (
 )
 
 type GearServer struct {
-	wg       sync.WaitGroup
-	server   *http.Server
-	listener net.Listener
-	process  process
+	wg      sync.WaitGroup
+	server  *http.Server
+	process process
 }
 
 type process struct {
@@ -37,6 +36,25 @@ func (p process) stopParent() {
 		return
 	}
 	syscall.Kill(p.ppid, syscall.SIGTERM)
+}
+
+func (p process) forkWithListener(l net.Listener) {
+	// Get file from net.Listener
+	fl, err := l.(*net.TCPListener).File()
+	if err != nil {
+		fmt.Printf("err in forkWithListener %v\n", err)
+	}
+
+	// Fork own process
+	cmd := exec.Command(os.Args[0])
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = []string{"gear=child"}
+	cmd.ExtraFiles = []*os.File{fl}
+	err = cmd.Start()
+	if err != nil {
+		fmt.Printf("start err: %s\n", err)
+	}
 }
 
 func ListenAndServe(addr string, handler http.Handler) error {
@@ -66,28 +84,35 @@ func (g *GearServer) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	go g.Serve(listener)
-	createPid()
 
-	g.Wait()
+	go g.WaitSignal(listener)
+
+	createPid()
+	g.Serve(listener)
+
 	return nil
 }
 
 func (g *GearServer) Listener() (net.Listener, error) {
-
-	if g.listener != nil {
-		return g.listener, nil
-	}
-	var err error
-	var l net.Listener
-	if isParentProcess() {
-		l, err = net.Listen("tcp", g.server.Addr)
+	if g.process.isFirst() {
+		return net.Listen("tcp", g.server.Addr)
 	} else {
 		f := os.NewFile(3, "")
-		l, err = net.FileListener(f)
+		return net.FileListener(f)
 	}
-	g.listener = l
-	return l, err
+}
+
+func (g *GearServer) WaitSignal(l net.Listener) {
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
+	sig := <-ch
+	fmt.Printf("Got a signal %v\n", sig)
+	switch sig {
+	case syscall.SIGTERM:
+		l.Close()
+	case syscall.SIGUSR2:
+		g.process.forkWithListener(l)
+	}
 }
 
 func (g *GearServer) Serve(l net.Listener) error {
@@ -115,40 +140,4 @@ func (g *GearServer) Serve(l net.Listener) error {
 	g.wg.Wait()
 	removeOldPid()
 	return nil
-}
-
-func (g *GearServer) Wait() {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
-	sig := <-ch
-	fmt.Printf("Got a signal %v\n", sig)
-	switch sig {
-	case syscall.SIGTERM:
-		g.listener.Close()
-	case syscall.SIGUSR2:
-		g.restart()
-	}
-}
-
-func (g GearServer) restart() {
-	renamePid()
-	g.fork()
-}
-
-func (g GearServer) fork() {
-	tl := g.listener.(*net.TCPListener)
-	fl, _ := tl.File()
-	cmd := exec.Command(os.Args[0])
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"gear=child"}
-	cmd.ExtraFiles = []*os.File{fl}
-	err := cmd.Start()
-	if err != nil {
-		fmt.Printf("start err: %s\n", err)
-	}
-}
-
-func isParentProcess() bool {
-	return os.Getenv("gear") == ""
 }
