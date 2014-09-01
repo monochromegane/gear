@@ -10,36 +10,36 @@ import (
 	"syscall"
 )
 
-type GearServer struct {
+type Server struct {
 	wg      sync.WaitGroup
 	server  *http.Server
 	process process
 }
 
-func (g *GearServer) ListenAndServe() error {
-	listener, err := g.Listener()
+func (s *Server) ListenAndServe() error {
+	listener, err := s.Listener()
 	if err != nil {
 		return err
 	}
 
-	go g.WaitSignal(listener)
+	go s.WaitSignal(listener)
 
 	createPid()
-	g.Serve(listener)
+	s.Serve(listener)
 
 	return nil
 }
 
-func (g *GearServer) Listener() (net.Listener, error) {
-	if g.process.isFirst() {
-		return net.Listen("tcp", g.server.Addr)
+func (s *Server) Listener() (net.Listener, error) {
+	if s.process.isFirst() {
+		return net.Listen("tcp", s.server.Addr)
 	} else {
 		f := os.NewFile(3, "")
 		return net.FileListener(f)
 	}
 }
 
-func (g *GearServer) WaitSignal(l net.Listener) {
+func (s *Server) WaitSignal(l net.Listener) {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, syscall.SIGUSR2, syscall.SIGTERM)
 	sig := <-ch
@@ -48,28 +48,28 @@ func (g *GearServer) WaitSignal(l net.Listener) {
 	case syscall.SIGTERM:
 		l.Close()
 	case syscall.SIGUSR2:
-		g.process.forkWithListener(l)
+		s.process.forkWithListener(l)
 	}
 }
 
-func (g *GearServer) Serve(l net.Listener) error {
-	g.server.ConnState = func(conn net.Conn, state http.ConnState) {
+func (s *Server) Serve(l net.Listener) error {
+	s.server.ConnState = func(conn net.Conn, state http.ConnState) {
 		fmt.Printf("State: %d\n", state)
 		switch state {
 		case http.StateNew:
-			g.wg.Add(1)
+			s.wg.Add(1)
 		case http.StateHijacked, http.StateClosed:
-			g.wg.Done()
+			s.wg.Done()
 		}
 	}
 
-	g.process.stopParent()
+	s.process.stopParent()
 
-	err := g.server.Serve(l)
+	err := s.server.Serve(l)
 	if err != nil {
 		return err
 	}
-	g.wg.Wait()
+	s.wg.Wait()
 	removeOldPid()
 	return nil
 }

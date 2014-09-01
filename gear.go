@@ -11,18 +11,16 @@ func ListenAndServe(addr string, handler http.Handler) error {
 	return err
 }
 
-func NewServer(addr string, handler http.Handler) *GearServer {
-	server := &http.Server{
-		Addr:    addr,
-		Handler: handler,
-	}
-	gear := &GearServer{
-		server: server,
+func NewServer(addr string, handler http.Handler) *Server {
+	return &Server{
+		server: &http.Server{
+			Addr:    addr,
+			Handler: handler,
+		},
 		process: process{
 			ppid: os.Getppid(),
 			pid:  os.Getpid(),
 			env:  os.Getenv("gear"),
 		},
 	}
-	return gear
 }
