@@ -15,21 +15,37 @@ type GearServer struct {
 	wg       sync.WaitGroup
 	server   *http.Server
 	listener net.Listener
+	parent   parent
+}
+
+type parent int
+
+func (p parent) stop() {
+	ppid := int(p)
+	if ppid == 1 || p.isFirstProcess() {
+		return
+	}
+	syscall.Kill(ppid, syscall.SIGTERM)
+}
+
+func (p parent) isFirstProcess() bool {
+	return os.Getenv("gear") == ""
 }
 
 func ListenAndServe(addr string, handler http.Handler) error {
-	server := newServer(addr, handler)
+	server := NewServer(addr, handler)
 	err := server.ListenAndServe()
 	return err
 }
 
-func newServer(addr string, handler http.Handler) *GearServer {
+func NewServer(addr string, handler http.Handler) *GearServer {
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
 	}
 	gear := &GearServer{
 		server: server,
+		parent: parent(os.Getppid()),
 	}
 	return gear
 }
@@ -78,10 +94,8 @@ func (g *GearServer) Serve(l net.Listener) error {
 		}
 	}
 
-	if isChildProcess() {
-		parent := syscall.Getppid()
-		syscall.Kill(parent, syscall.SIGTERM)
-	}
+	g.parent.stop()
+
 	err := g.server.Serve(l)
 	if err != nil {
 		return err
@@ -125,8 +139,4 @@ func (g GearServer) fork() {
 
 func isParentProcess() bool {
 	return os.Getenv("gear") == ""
-}
-
-func isChildProcess() bool {
-	return !isParentProcess()
 }
