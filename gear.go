@@ -15,21 +15,28 @@ type GearServer struct {
 	wg       sync.WaitGroup
 	server   *http.Server
 	listener net.Listener
-	parent   parent
+	process  process
 }
 
-type parent int
+type process struct {
+	ppid int
+	pid  int
+	env  string
+}
 
-func (p parent) stop() {
-	ppid := int(p)
-	if ppid == 1 || p.isFirstProcess() {
+func (p process) isFirst() bool {
+	return p.ppid == 1 || p.env == ""
+}
+
+func (p process) isForked() bool {
+	return !p.isFirst()
+}
+
+func (p process) stopParent() {
+	if p.isFirst() {
 		return
 	}
-	syscall.Kill(ppid, syscall.SIGTERM)
-}
-
-func (p parent) isFirstProcess() bool {
-	return os.Getenv("gear") == ""
+	syscall.Kill(p.ppid, syscall.SIGTERM)
 }
 
 func ListenAndServe(addr string, handler http.Handler) error {
@@ -45,7 +52,11 @@ func NewServer(addr string, handler http.Handler) *GearServer {
 	}
 	gear := &GearServer{
 		server: server,
-		parent: parent(os.Getppid()),
+		process: process{
+			ppid: os.Getppid(),
+			pid:  os.Getpid(),
+			env:  os.Getenv("gear"),
+		},
 	}
 	return gear
 }
@@ -63,6 +74,7 @@ func (g *GearServer) ListenAndServe() error {
 }
 
 func (g *GearServer) Listener() (net.Listener, error) {
+
 	if g.listener != nil {
 		return g.listener, nil
 	}
@@ -94,7 +106,7 @@ func (g *GearServer) Serve(l net.Listener) error {
 		}
 	}
 
-	g.parent.stop()
+	g.process.stopParent()
 
 	err := g.server.Serve(l)
 	if err != nil {
