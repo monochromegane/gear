@@ -8,14 +8,15 @@ import (
 	"syscall"
 )
 
+var GEAR_ENV = "gear"
+
 type process struct {
 	ppid int
 	pid  int
-	env  string
 }
 
 func (p process) isFirst() bool {
-	return p.ppid == 1 || p.env == ""
+	return p.ppid == 1 || os.Getenv(GEAR_ENV) == ""
 }
 
 func (p process) isForked() bool {
@@ -40,7 +41,7 @@ func (p process) forkWithListener(l net.Listener) {
 	cmd := exec.Command(os.Args[0])
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"gear=child"}
+	cmd.Env = []string{fmt.Sprintf("%s=child", GEAR_ENV)}
 	cmd.ExtraFiles = []*os.File{fl}
 	err = cmd.Start()
 	if err != nil {

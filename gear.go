@@ -20,7 +20,6 @@ func NewServer(addr string, handler http.Handler) *Server {
 		process: process{
 			ppid: os.Getppid(),
 			pid:  os.Getpid(),
-			env:  os.Getenv("gear"),
 		},
 	}
 }
